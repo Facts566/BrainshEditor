@@ -1,0 +1,8 @@
+{ comments everywhere }
+:72.{ H }
+{ this text is not code, so it may use any word }
+{ a whole
+  line
+  comment }:105.{ i }
+   { indented } :10.
+#

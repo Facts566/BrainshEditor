@@ -1,0 +1,6 @@
+{ including the same file twice is safe }
+%lib.bsh
+%lib.bsh
+@hi
+@countdown
+@hi

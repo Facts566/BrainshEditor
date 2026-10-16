@@ -1,0 +1,47 @@
+# Unity
+/Library/
+/Temp/
+/Obj/
+/Build/
+/Builds/
+/Logs/
+/UserSettings/
+/MemoryCaptures/
+/Recordings/
+
+# Never ignore these, Unity regenerates their .meta files
+!/[Aa]ssets/**/*.meta
+!/[Pp]ackages/**/*.meta
+
+# Generated IDE projects
+*.csproj
+*.unityproj
+*.sln
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+.vs/
+.idea/
+.vscode/
+*.swp
+
+# Builds and packages
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test suite output
+Tools/BrainshTests/bin/
+Tools/BrainshTests/obj/
+Tools/BrainshTests/ref/bsh

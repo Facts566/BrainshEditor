@@ -1,0 +1,8 @@
+{ macros calling macros and nested expansion }
+%"lib.bsh"
+
+@twice = @hi@hi
+@two = :90@put
+
+@twice
+@two

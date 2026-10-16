@@ -1,0 +1,6 @@
+{ end of input leaves the cell at 0 }
+:65,#
+:65N#
+,#
+:65,;:65#
++#.

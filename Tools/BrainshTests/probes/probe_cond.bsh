@@ -1,0 +1,8 @@
+{ conditions run the block once, only for digits }
+:48(. :9.)      { cell 48 is '0', block runs }
+[-]:81(.)       { 81 is not a digit, block is skipped }
+[-]:52(:9.)     { cell 52 is '4', block runs }
+[-]>[->0<]      { nothing left in cell 1 }
+:48>:5[
+  <(. :2)>;1
+]

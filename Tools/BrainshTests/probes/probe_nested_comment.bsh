@@ -1,0 +1,7 @@
+{ nested
+  comments { inside { deeper } still comment }
+  done }
+:72. { H }
+{ trailing
+  comment }
+:105.
