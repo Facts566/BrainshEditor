@@ -54,7 +54,7 @@ namespace BrainshEditor
 
         public static float PreferredHeight
         {
-            get { return 268f; }
+            get { return 286f; }
         }
 
         public void Build(RectTransform root)
@@ -64,8 +64,8 @@ namespace BrainshEditor
 
             // Control row
             RectTransform controls = Ui.Node("controls", root);
-            Ui.AtTop(controls, 54f);
-            controls.offsetMin = new Vector2(pad, -54f);
+            Ui.AtTop(controls, 58f);
+            controls.offsetMin = new Vector2(pad, -58f);
             controls.offsetMax = new Vector2(-pad, 0f);
 
             HorizontalLayoutGroup row = Ui.Row(controls, gap);
@@ -84,8 +84,8 @@ namespace BrainshEditor
             // Page tabs
             RectTransform tabs = Ui.Node("tabs", root);
             Ui.AtTop(tabs, 30f);
-            tabs.offsetMin = new Vector2(pad, -94f);
-            tabs.offsetMax = new Vector2(-pad, -58f);
+            tabs.offsetMin = new Vector2(pad, -100f);
+            tabs.offsetMax = new Vector2(-pad, -62f);
 
             HorizontalLayoutGroup tabRow = Ui.Row(tabs, gap);
             tabRow.childForceExpandWidth = true;
@@ -94,9 +94,9 @@ namespace BrainshEditor
             {
                 int index = i;
                 Button button = Ui.Btn("page" + i, tabRow.transform, PageNames[i], Ui.PanelLight,
-                    () => ShowPage(index), 18);
+                    () => ShowPage(index), 15);
 
-                LayoutElement element = Ui.Size(button.gameObject, -1, 36f);
+                LayoutElement element = Ui.Size(button.gameObject, -1, 40f);
                 element.flexibleWidth = 1f;
 
                 _pageButtons[i] = button;
@@ -118,7 +118,7 @@ namespace BrainshEditor
             for (int i = 0; i < MaxKeys; i++)
             {
                 int index = i;
-                Button button = Ui.Btn("key" + i, _gridRoot, string.Empty, Ui.Key, () => Key(_captions[index]), 22);
+                Button button = Ui.Btn("key" + i, _gridRoot, string.Empty, Ui.Key, () => Key(_captions[index]), 18);
                 _keyButtons[i] = button;
                 _keyLabels[i] = button.GetComponentInChildren<Text>();
             }
@@ -148,7 +148,7 @@ namespace BrainshEditor
 
             if (Mathf.Abs(_grid.cellSize.x - cell) < 0.5f) return;
 
-            _grid.cellSize = new Vector2(cell, 50f);
+            _grid.cellSize = new Vector2(cell, 56f);
         }
 
         public void ShowPage(int page)
@@ -204,9 +204,9 @@ namespace BrainshEditor
             UnityEngine.Events.UnityAction action = null)
         {
             Button button = Ui.Btn(caption, row.transform, caption, Ui.PanelLight,
-                action ?? (() => Key(key)), 17);
+                action ?? (() => Key(key)), 14, 2f);
 
-            LayoutElement element = Ui.Size(button.gameObject, -1, 48f);
+            LayoutElement element = Ui.Size(button.gameObject, -1, 52f);
             element.flexibleWidth = weight;
 
             return button;

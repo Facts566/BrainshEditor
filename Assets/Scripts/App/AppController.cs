@@ -14,7 +14,7 @@ namespace BrainshEditor
     [AddComponentMenu("")]
     public class AppController : MonoBehaviour
     {
-        private const float ToolbarHeight = 58f;
+        private const float ToolbarHeight = 64f;
         private const float StatusHeight = 30f;
         private const float ConsoleHeight = 170f;
         private const float GutterWidth = 52f;
@@ -174,8 +174,6 @@ namespace BrainshEditor
             ToolButton(row, "Save", Ui.PanelLight, () => Save(true));
             ToolButton(row, "Undo", Ui.PanelLight, () => _editor.OnKey("Undo"));
             ToolButton(row, "Redo", Ui.PanelLight, () => _editor.OnKey("Redo"));
-            ToolButton(row, "Out", Ui.PanelLight, ToggleConsole);
-            ToolButton(row, "Kbd", Ui.PanelLight, ToggleKeyboard);
             ToolButton(row, "Files", Ui.PanelLight, ShowFiles);
             ToolButton(row, "Menu", Ui.PanelLight, ShowMainMenu);
             ToolButton(row, "Exit", Ui.Stop, QuitApp);
@@ -183,7 +181,7 @@ namespace BrainshEditor
 
         private Button ToolButton(HorizontalLayoutGroup row, string caption, Color color, Action action)
         {
-            Button button = Ui.Btn(caption, row.transform, caption, color, () => action(), 17);
+            Button button = Ui.Btn(caption, row.transform, caption, color, () => action(), 14, 2f);
             LayoutElement element = Ui.Size(button.gameObject, -1, 0f);
             element.flexibleWidth = 1f;
             return button;
@@ -625,15 +623,15 @@ namespace BrainshEditor
 
             RectTransform header = Ui.Node("header", card);
             Ui.AtTop(header, 62f);
-            Ui.Label("title", header, title, 23, Ui.TextMain, TextAnchor.MiddleLeft);
+            Ui.Label("title", header, title, 20, Ui.TextMain, TextAnchor.MiddleLeft);
             Ui.Stretch(((RectTransform)header.Find("title")), 14f, 0f, 0f, 0f);
 
-            Button close = Ui.Btn("close", header, "Close", Ui.Panel, CloseMenu, 18);
+            Button close = Ui.Btn("close", header, "Close", Ui.Panel, CloseMenu, 15);
             RectTransform closeRect = (RectTransform)close.transform;
             closeRect.anchorMin = new Vector2(1f, 0.5f);
             closeRect.anchorMax = new Vector2(1f, 0.5f);
             closeRect.pivot = new Vector2(1f, 0.5f);
-            closeRect.sizeDelta = new Vector2(130f, 44f);
+            closeRect.sizeDelta = new Vector2(150f, 52f);
             closeRect.anchoredPosition = new Vector2(-10f, 0f);
 
             RectTransform viewport = Ui.Node("list", card);
@@ -663,9 +661,9 @@ namespace BrainshEditor
 
                 MenuEntry item = entry;
                 Button button = Ui.Btn("entry", content, item.Caption,
-                    item.Danger ? Ui.Stop : Ui.Panel, () => item.Action(), 20);
+                    item.Danger ? Ui.Stop : Ui.Panel, () => item.Action(), 17);
 
-                Ui.Size(button.gameObject, -1, 54f);
+                Ui.Size(button.gameObject, -1, 60f);
             }
 
             var fitter = content.gameObject.AddComponent<ContentSizeFitter>();
