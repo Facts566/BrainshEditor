@@ -828,8 +828,10 @@ namespace BrainshEditor
                 case 2:
                     if (_shotTimer < 2f) return;
 
-                    // На компьютере экранная клавиатура скрыта, включаем её кнопкой.
-                    ClickControl("Kbd");
+                    // На компьютере экранная клавиатура скрыта, а кнопки Kbd в тулбаре
+                    // больше нет - показываем её напрямую.
+                    _keyboardVisible = true;
+                    Relayout();
                     _textBefore = _editor.Text.Length;
                     _testStep = 3;
                     return;
@@ -875,7 +877,8 @@ namespace BrainshEditor
                 case 8:
                     if (_shotTimer < 4.4f) return;
 
-                    ClickControl("Out");
+                    // Кнопки Out в тулбаре больше нет, переключаем панель напрямую.
+                    ToggleConsole();
                     Debug.Log("SELFTEST 5: output panel toggled, visible=" + _consoleVisible);
                     _testStep = 9;
                     return;
@@ -933,12 +936,37 @@ namespace BrainshEditor
                 }
 
                 case 11:
+                {
+                    if (_shotTimer < 5.4f) return;
+
+                    // Прокрутка колесом: вниз — код сдвигается вверх, вверх — обратно.
+                    Wheel(0f, -3f);
+                    float down = _editor.ScrollY;
+                    Wheel(0f, 3f);
+                    float back = _editor.ScrollY;
+
+                    Debug.Log("SELFTEST 8: колесо вниз → прокрутка " + down.ToString("0") +
+                              " (ожидалось больше 0), колесо вверх → " + back.ToString("0") +
+                              " (ожидалось 0) " +
+                              (down > 0f && back < 0.5f ? "OK" : "MISMATCH"));
+
+                    _testStep = 12;
+                    return;
+                }
+
+                case 12:
                     if (_shotTimer < 6.5f) return;
 
                     Debug.Log("SELFTEST done");
                     Application.Quit();
                     return;
             }
+        }
+
+        private void Wheel(float x, float y)
+        {
+            var data = new PointerEventData(EventSystem.current) { scrollDelta = new Vector2(x, y) };
+            ExecuteEvents.Execute(_editor.viewport.gameObject, data, ExecuteEvents.scrollHandler);
         }
 
         /// <summary>Presses a control at a screen position, like a real pointer.</summary>

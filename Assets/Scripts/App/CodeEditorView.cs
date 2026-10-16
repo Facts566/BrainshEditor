@@ -24,6 +24,7 @@ namespace BrainshEditor
     {
         public const float LongPressSeconds = 0.35f;
         public const float DragThreshold = 8f;
+        public const float ScrollStep = 60f;
 
         public RectTransform viewport;
         public RectTransform content;
@@ -292,9 +293,13 @@ namespace BrainshEditor
             _lastDragPosition = eventData.position;
         }
 
+        /// <summary>
+        /// Mouse wheel. scrollDelta.y is positive when the wheel goes up, and up means
+        /// "show the text above", so the offset must decrease.
+        /// </summary>
         public void OnScroll(PointerEventData eventData)
         {
-            _scrollY += eventData.scrollDelta.y * 60f;
+            _scrollY -= eventData.scrollDelta.y * ScrollStep;
             ClampScroll();
             Refresh();
         }
