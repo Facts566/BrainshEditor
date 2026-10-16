@@ -14,14 +14,14 @@ namespace BrainshEditor
     [AddComponentMenu("")]
     public class AppController : MonoBehaviour
     {
-        private const float ToolbarHeight = 52f;
-        private const float StatusHeight = 26f;
-        private const float ConsoleHeight = 150f;
-        private const float GutterWidth = 46f;
+        private const float ToolbarHeight = 58f;
+        private const float StatusHeight = 30f;
+        private const float ConsoleHeight = 170f;
+        private const float GutterWidth = 52f;
         private const float ScrollbarWidth = 10f;
-        private const int EditorFontSize = 22;
-        private const float CodePaddingX = 8f;
-        private const float paddingY = 6f;
+        private const int EditorFontSize = 25;
+        private const float CodePaddingX = 10f;
+        private const float paddingY = 8f;
 
         private readonly List<MenuEntry> _menu = new List<MenuEntry>();
 
@@ -154,13 +154,7 @@ namespace BrainshEditor
                 events.transform.SetParent(_canvas.transform, false);
             }
 
-            var scaler = _canvas.GetComponent<CanvasScaler>();
-            if (scaler == null) scaler = _canvas.gameObject.AddComponent<CanvasScaler>();
-
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1080f, 1920f);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
+            Ui.ApplyToCanvas(_canvas);
         }
 
         private void BuildToolbar()
@@ -189,7 +183,7 @@ namespace BrainshEditor
 
         private Button ToolButton(HorizontalLayoutGroup row, string caption, Color color, Action action)
         {
-            Button button = Ui.Btn(caption, row.transform, caption, color, () => action(), 15);
+            Button button = Ui.Btn(caption, row.transform, caption, color, () => action(), 17);
             LayoutElement element = Ui.Size(button.gameObject, -1, 0f);
             element.flexibleWidth = 1f;
             return button;
@@ -266,7 +260,7 @@ namespace BrainshEditor
             caretRect.anchorMin = new Vector2(0f, 1f);
             caretRect.anchorMax = new Vector2(0f, 1f);
             caretRect.pivot = new Vector2(0f, 1f);
-            caretRect.sizeDelta = new Vector2(2f, 20f);
+            caretRect.sizeDelta = new Vector2(3f, 22f);
 
             var caret = caretRect.gameObject.AddComponent<Image>();
             caret.color = Ui.Caret;
@@ -337,12 +331,12 @@ namespace BrainshEditor
             content.anchoredPosition = Vector2.zero;
             content.sizeDelta = Vector2.zero;
 
-            Text output = Ui.Label("output", content, string.Empty, 16, Ui.TextMain, TextAnchor.UpperLeft, true);
+            Text output = Ui.Label("output", content, string.Empty, 18, Ui.TextMain, TextAnchor.UpperLeft, true);
             Ui.Stretch(output.rectTransform);
 
             // The height is set by hand: a ContentSizeFitter is not re-evaluated
             // when only Text.text changes, and the output would stay invisible.
-            Text input = Ui.Label("input line", _consolePanel, string.Empty, 16, Ui.Accent, TextAnchor.LowerLeft);
+            Text input = Ui.Label("input line", _consolePanel, string.Empty, 18, Ui.Accent, TextAnchor.LowerLeft);
             Ui.Stretch(input.rectTransform, 8f, 4f, 8f, 0f);
 
             _console = _consolePanel.gameObject.AddComponent<ConsoleView>();
@@ -358,10 +352,10 @@ namespace BrainshEditor
             _statusBar = Ui.Node("status", _safeArea);
             Ui.Box("status background", _statusBar, Ui.Panel);
 
-            _statusText = Ui.Label("status", _statusBar, string.Empty, 15, Ui.TextDim, TextAnchor.MiddleLeft);
+            _statusText = Ui.Label("status", _statusBar, string.Empty, 17, Ui.TextDim, TextAnchor.MiddleLeft);
             Ui.Stretch(_statusText.rectTransform, 10f, 0f, 0f, 0f);
 
-            _fileText = Ui.Label("file", _statusBar, string.Empty, 15, Ui.TextDim, TextAnchor.MiddleRight);
+            _fileText = Ui.Label("file", _statusBar, string.Empty, 17, Ui.TextDim, TextAnchor.MiddleRight);
             Ui.Stretch(_fileText.rectTransform, 0f, 0f, 10f, 0f);
         }
 
@@ -624,22 +618,22 @@ namespace BrainshEditor
             RectTransform card = Ui.Node("card", dim.transform);
             card.anchorMin = new Vector2(0f, 0f);
             card.anchorMax = new Vector2(1f, 1f);
-            card.offsetMin = new Vector2(24f, 60f);
-            card.offsetMax = new Vector2(-24f, -60f);
+            card.offsetMin = new Vector2(18f, 48f);
+            card.offsetMax = new Vector2(-18f, -48f);
 
             Ui.Box("card background", card, Ui.PanelLight);
 
             RectTransform header = Ui.Node("header", card);
-            Ui.AtTop(header, 54f);
-            Ui.Label("title", header, title, 20, Ui.TextMain, TextAnchor.MiddleLeft);
+            Ui.AtTop(header, 62f);
+            Ui.Label("title", header, title, 23, Ui.TextMain, TextAnchor.MiddleLeft);
             Ui.Stretch(((RectTransform)header.Find("title")), 14f, 0f, 0f, 0f);
 
-            Button close = Ui.Btn("close", header, "Close", Ui.Panel, CloseMenu, 16);
+            Button close = Ui.Btn("close", header, "Close", Ui.Panel, CloseMenu, 18);
             RectTransform closeRect = (RectTransform)close.transform;
             closeRect.anchorMin = new Vector2(1f, 0.5f);
             closeRect.anchorMax = new Vector2(1f, 0.5f);
             closeRect.pivot = new Vector2(1f, 0.5f);
-            closeRect.sizeDelta = new Vector2(110f, 36f);
+            closeRect.sizeDelta = new Vector2(130f, 44f);
             closeRect.anchoredPosition = new Vector2(-10f, 0f);
 
             RectTransform viewport = Ui.Node("list", card);
@@ -669,9 +663,9 @@ namespace BrainshEditor
 
                 MenuEntry item = entry;
                 Button button = Ui.Btn("entry", content, item.Caption,
-                    item.Danger ? Ui.Stop : Ui.Panel, () => item.Action(), 18);
+                    item.Danger ? Ui.Stop : Ui.Panel, () => item.Action(), 20);
 
-                Ui.Size(button.gameObject, -1, 46f);
+                Ui.Size(button.gameObject, -1, 54f);
             }
 
             var fitter = content.gameObject.AddComponent<ContentSizeFitter>();

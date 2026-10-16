@@ -9,7 +9,8 @@ set -euo pipefail
 
 TOKEN_FILE="$HOME/.github_token"
 REPO="BrainshEditor"
-TAG="v1.0.0"
+TAG="${TAG:-v1.0.0}"
+APK_NAME="${APK_NAME:-BrainshEditor-1.0.apk}"
 
 cd "$(dirname "$0")"
 
@@ -36,26 +37,53 @@ echo "=== коммит и тег ==="
 git remote remove origin 2>/dev/null || true
 git remote add origin "https://x-access-token:$TOKEN@github.com/$LOGIN/$REPO.git"
 git branch -M main
-git tag -f "$TAG" -m "Brainsh Editor 1.0" >/dev/null
-git push -u origin main --quiet
-git push origin "$TAG" --quiet
+git push -u origin main --quiet || echo "ветка уже запушена"
+git tag -f "$TAG" -m "$TAG" >/dev/null
+git push origin "$TAG" --quiet || echo "тег $TAG уже есть на сервере"
 echo "код запушен"
 
 echo "=== релиз $TAG ==="
 python3 - <<'PY' > /tmp/brainsh_release.json
-import json
+import json, os
 notes = open("release/RELEASE_NOTES.md", encoding="utf-8").read()
 json.dump({
-    "tag_name": "v1.0.0",
-    "name": "Brainsh Editor 1.0",
+    "tag_name": os.environ.get("TAG", "v1.0.0"),
+    "name": "Brainsh Editor " + os.environ.get("TAG", "v1.0.0").lstrip("v"),
     "body": notes,
     "draft": False,
     "prerelease": False,
 }, open("/tmp/brainsh_release.json", "w", encoding="utf-8"))
 PY
 
-UPLOAD=$(api -X POST "https://uploads.github.com/repos/$LOGIN/$REPO/releases/$TAG/assets?name=BrainshEditor-1.0.apk" \
-    --data-binary "@release/BrainshEditor-1.0.apk" \
+# создать релиз (идемпотентно: если уже есть — пропускаем)
+if ! api "https://api.github.com/repos/$LOGIN/$REPO/releases/tags/$TAG" | grep -q '"id"'; then
+    api -X POST "https://api.github.com/repos/$LOGIN/$REPO/releases" \
+        -H "Content-Type: application/json" \
+        --data-binary @/tmp/brainsh_release.json \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print('релиз создан:', d.get('html_url', d))"
+else
+    echo "релиз $TAG уже существует"
+fi
+
+# загрузка вложений идёт по числовому id релиза, а не по тегу
+RELEASE_ID=$(api "https://api.github.com/repos/$LOGIN/$REPO/releases/tags/$TAG" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+echo "id релиза: $RELEASE_ID"
+
+# старое вложение с таким именем удаляем, иначе повторная загрузка не пройдёт
+api "https://api.github.com/repos/$LOGIN/$REPO/releases/$RELEASE_ID/assets" \
+  | python3 -c "
+import sys, json
+for a in json.load(sys.stdin):
+    if a['name'] == os.environ.get('APK_NAME', 'BrainshEditor-1.0.apk'):
+        print(a['id'])
+" | while read -r OLD; do
+        [ -n "$OLD" ] && api -X DELETE "https://api.github.com/repos/$LOGIN/$REPO/releases/assets/$OLD" \
+            && echo "старое вложение удалено"
+    done
+
+UPLOAD=$(api --max-time 900 -X POST "https://uploads.github.com/repos/$LOGIN/$REPO/releases/$RELEASE_ID/assets?name=$APK_NAME" \
+    --data-binary "@release/$APK_NAME" \
     -H "Content-Type: application/vnd.android.package-archive")
 
 echo "$UPLOAD" | python3 -c "
@@ -64,4 +92,5 @@ d = json.load(sys.stdin)
 print('релиз готов:', d.get('html_url', d))
 "
 
-rm -f "$TOKEN_FILE" && echo "файл с токеном удалён"
+git remote set-url origin "https://github.com/$LOGIN/$REPO.git"
+rm -f "$TOKEN_FILE" && echo "токен убран из remote и удалён с диска"

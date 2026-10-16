@@ -42,6 +42,51 @@ namespace BrainshEditor
         public static readonly Color CodeInclude = new Color32(0x8F, 0xD1, 0xB0, 0xFF);
         public static readonly Color CodeString = new Color32(0xEC, 0xC4, 0x87, 0xFF);
 
+        /// <summary>
+        /// Pixels per dp. Everything in the interface is measured in dp, so the buttons and
+        /// the keys are the same real size on a small phone and on a tablet.
+        /// </summary>
+        public static float Density
+        {
+            get
+            {
+                float dpi = Screen.dpi;
+                if (dpi <= 0f) return 2f;
+
+                float density = dpi / 160f;
+
+                // Wild values come from some drivers, keep the layout sane anyway.
+                if (density < 1f || density > 6f) return 2f;
+
+                return density;
+            }
+        }
+
+        /// <summary>Canvas size in dp: one canvas unit becomes one dp.</summary>
+        public static Vector2 ScreenInDp
+        {
+            get
+            {
+                float density = Density;
+
+                return new Vector2(
+                    Mathf.Max(240f, Screen.width / density),
+                    Mathf.Max(320f, Screen.height / density));
+            }
+        }
+
+        /// <summary>Configures the canvas so that one canvas unit equals one dp.</summary>
+        public static void ApplyToCanvas(Canvas canvas)
+        {
+            var scaler = canvas.GetComponent<CanvasScaler>();
+            if (scaler == null) scaler = canvas.gameObject.AddComponent<CanvasScaler>();
+
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = ScreenInDp;
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 0.5f;
+        }
+
         private static Font _font;
 
         /// <summary>Built-in dynamic font, available in every build.</summary>

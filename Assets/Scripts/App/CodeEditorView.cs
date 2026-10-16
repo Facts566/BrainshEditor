@@ -34,9 +34,9 @@ namespace BrainshEditor
         public Image caret;
         public RectTransform scrollbarHandle;
 
-        [Range(12, 48)] public int fontSize = 22;
-        public float paddingX = 8f;
-        public float paddingY = 6f;
+        [Range(14, 48)] public int fontSize = 25;
+        public float paddingX = 10f;
+        public float paddingY = 8f;
 
         public event Action Changed;
         public event Action<int, int> CaretMoved;
@@ -569,7 +569,7 @@ namespace BrainshEditor
 
                 caret.rectTransform.anchoredPosition =
                     new Vector2(paddingX + _layout.XOf(index), -(paddingY + line * _layout.LineHeight));
-                caret.rectTransform.sizeDelta = new Vector2(2f, _layout.LineHeight);
+                caret.rectTransform.sizeDelta = new Vector2(3f, _layout.LineHeight);
             }
         }
 
