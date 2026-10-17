@@ -37,9 +37,23 @@ echo "=== коммит и тег ==="
 git remote remove origin 2>/dev/null || true
 git remote add origin "https://x-access-token:$TOKEN@github.com/$LOGIN/$REPO.git"
 git branch -M main
-git push -u origin main --quiet || echo "ветка уже запушена"
+
+# На сервере могут появиться коммиты, которых нет здесь: файл LICENSE, добавленный
+# через веб-интерфейс GitHub, например. Без этого пункт push ниже будет отклонён
+# как не ускоренный, а проглоченная ошибка продолжила бы публикацию вслепую.
+# Свою историю не переписываем — уже опубликованные теги указывают на эти
+# коммиты, поэтому сливаем.
+git fetch origin main --quiet || true
+if git rev-parse --verify --quiet origin/main >/dev/null &&
+   ! git merge-base --is-ancestor origin/main HEAD; then
+    git merge origin/main --quiet -m "Слияние с веткой main на GitHub"
+    echo "ветка слита с сервером"
+fi
+
+# Ошибка пуша обязана останавливать скрипт: set -e и никаких "|| echo".
+git push -u origin main --quiet
 git tag -f "$TAG" -m "$TAG" >/dev/null
-git push origin "$TAG" --quiet || echo "тег $TAG уже есть на сервере"
+git push origin "$TAG" --force --quiet
 echo "код запушен"
 
 echo "=== релиз $TAG ==="
