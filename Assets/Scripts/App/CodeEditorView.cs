@@ -22,9 +22,15 @@ namespace BrainshEditor
     public class CodeEditorView : MonoBehaviour,
         IPointerDownHandler, IPointerUpHandler, IDragHandler, IScrollHandler
     {
-        public const float LongPressSeconds = 0.35f;
+        public const float LongPressSeconds = 0.5f;
         public const float DragThreshold = 8f;
         public const float ScrollStep = 60f;
+
+        // A finger that lands and then moves is the beginning of a scroll, not the
+        // beginning of a selection: this much travel right after the long press gives
+        // the scroll back.
+        public const float SelectToPanSeconds = 0.3f;
+        public const float SelectToPanDistance = 24f;
 
         public RectTransform viewport;
         public RectTransform content;
@@ -55,6 +61,8 @@ namespace BrainshEditor
 
         private bool _pressing;
         private bool _panning;
+        private float _selectTime;
+        private Vector2 _selectPosition;
         private bool _selecting;
         private Vector2 _pressPosition;
         private Vector2 _lastDragPosition;
@@ -77,6 +85,12 @@ namespace BrainshEditor
         public float ScrollY
         {
             get { return _scrollY; }
+        }
+
+        /// <summary>Which gesture a finger is in right now: dragging the text or selecting.</summary>
+        public string Gesture
+        {
+            get { return _panning ? "pan" : _selecting ? "select" : _pressing ? "press" : "none"; }
         }
 
         private void Awake()
@@ -273,13 +287,27 @@ namespace BrainshEditor
                 _panning = true;
             }
 
+            // The long press can fire in the moment a scroll starts: the thumb lands,
+            // waits a fraction of a second and then runs. Whoever moves far right after
+            // it wanted to scroll, so the scroll wins and the selection is dropped.
+            if (_selecting && !_panning &&
+                Time.unscaledTime - _selectTime < SelectToPanSeconds &&
+                (eventData.position - _selectPosition).magnitude > SelectToPanDistance * CanvasScale())
+            {
+                _selecting = false;
+                _panning = true;
+                _lastDragPosition = eventData.position;
+            }
+
             if (_panning)
             {
+                // The text follows the finger, like a page under the thumb: a finger
+                // going up shows the lines below, so the offset grows.
                 Vector2 delta = eventData.position - _lastDragPosition;
                 float scale = CanvasScale();
 
-                _scrollX -= delta.x / scale;
-                _scrollY -= delta.y / scale;
+                _scrollX += delta.x / scale;
+                _scrollY += delta.y / scale;
 
                 ClampScroll();
                 Refresh();
@@ -413,6 +441,8 @@ namespace BrainshEditor
         private void BeginSelection()
         {
             _selecting = true;
+            _selectTime = Time.unscaledTime;
+            _selectPosition = _pressPosition;
 
             int index = IndexAtScreen(_pressPosition);
             _buffer.MoveCaret(index, false);
@@ -558,13 +588,18 @@ namespace BrainshEditor
             float width = Mathf.Max(_layout.Width + paddingX * 2, viewport.rect.width);
             float height = Mathf.Max(_layout.Height + paddingY * 2, viewport.rect.height);
 
+            // Both transforms hang from the top left corner of the viewport, so a larger
+            // scroll offset has to raise anchoredPosition, not lower it: hiding rows above
+            // moves the text up, where y grows upwards, but hiding columns on the left
+            // moves it left, where x shrinks. With a minus sign on y the text walked
+            // down the screen instead of up.
             content.sizeDelta = new Vector2(width, height);
-            content.anchoredPosition = new Vector2(-_scrollX, -_scrollY);
+            content.anchoredPosition = new Vector2(-_scrollX, _scrollY);
 
             if (numbersContent != null)
             {
                 numbersContent.sizeDelta = new Vector2(numbersContent.sizeDelta.x, height);
-                numbersContent.anchoredPosition = new Vector2(0f, -_scrollY);
+                numbersContent.anchoredPosition = new Vector2(0f, _scrollY);
             }
 
             if (caret != null)
@@ -652,6 +687,31 @@ namespace BrainshEditor
             return new Vector2(
                 text.x - area.width * 0.5f + paddingX - _scrollX,
                 area.height * 0.5f - (text.y + paddingY - _scrollY));
+        }
+
+        /// <summary>Geometry of the scrollable area, to see why scrolling stops short.</summary>
+        public string DescribeScrolling()
+        {
+            EnsureLayout();
+
+            Canvas canvas = Canvas();
+
+            Rect view = viewport.rect;
+            Rect contentRect = content.rect;
+            Rect codeRect = code != null ? code.rectTransform.rect : new Rect();
+
+            return "строк=" + _layout.LineCount +
+                   " высотаСтроки=" + _layout.LineHeight.ToString("0.0") +
+                   " высотаТекста=" + _layout.Height.ToString("0") +
+                   " текстРисует=" + (code != null ? code.preferredHeight.ToString("0") : "-") +
+                   " viewport=" + view.height.ToString("0") +
+                   " прокрутка=" + _scrollY.ToString("0") +
+                   " максимум=" + MaxScrollY().ToString("0") +
+                   " content=" + contentRect.height.ToString("0") +
+                   " contentY=" + content.anchoredPosition.y.ToString("0") +
+                   " codeRect=" + codeRect.height.ToString("0") +
+                   " codeY=" + (code != null ? code.rectTransform.anchoredPosition.y.ToString("0") : "-") +
+                   " масштабХолста=" + (canvas != null ? canvas.scaleFactor.ToString("0.00") : "-");
         }
 
         /// <summary>Prints every step of the screen to character conversion.</summary>

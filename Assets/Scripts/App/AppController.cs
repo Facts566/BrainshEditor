@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using Brainsh;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -59,6 +61,12 @@ namespace BrainshEditor
         private bool _runOnStart;
         private bool _selfTest;
         private int _testStep;
+        private bool _touchTest;
+        private int _touchStep;
+        private int _touchShot;
+        private bool _gestureStarted;
+        private bool _gestureDone;
+        private float _scrollBefore;
         private int _textBefore;
         private int _caretLine = 1;
         private int _caretColumn = 1;
@@ -94,7 +102,7 @@ namespace BrainshEditor
         /// <summary>A debug run types into the code, it must not touch the scripts on disk.</summary>
         private bool IsDebugRun
         {
-            get { return _selfTest || _shots != null; }
+            get { return _selfTest || _touchTest || _shots != null; }
         }
 
         // ---------------------------------------------------------------- build
@@ -741,6 +749,7 @@ namespace BrainshEditor
         ///   -brainsh-shot a.png,b.png   screenshots, one every "wait" seconds
         ///   -brainsh-run                start the program from the loaded script
         ///   -brainsh-selftest           click Run, a key, Menu and Out, and report the result
+        ///   -brainsh-touch              finger gestures on a long text, with screenshots
         ///   -brainsh-wait 3             seconds between screenshots (default 2.5)
         ///   -brainsh-size 720x1280      window size
         /// </summary>
@@ -762,6 +771,10 @@ namespace BrainshEditor
                 else if (args[i] == "-brainsh-selftest")
                 {
                     _selfTest = true;
+                }
+                else if (args[i] == "-brainsh-touch")
+                {
+                    _touchTest = true;
                 }
                 else if (args[i] == "-brainsh-wait" && i + 1 < args.Length)
                 {
@@ -803,6 +816,12 @@ namespace BrainshEditor
         /// </summary>
         private void RunSelfTest()
         {
+            if (_touchTest)
+            {
+                RunTouchTest();
+                return;
+            }
+
             if (!_selfTest) return;
 
             _shotTimer += Time.unscaledDeltaTime;
@@ -955,6 +974,18 @@ namespace BrainshEditor
                 }
 
                 case 12:
+                {
+                    if (_shotTimer < 5.8f) return;
+
+                    // Прокручиваем до упора вниз и смотрим, что происходит с геометрией.
+                    Wheel(0f, -40f);
+
+                    Debug.Log("SELFTEST 9: " + _editor.DescribeScrolling());
+                    _testStep = 13;
+                    return;
+                }
+
+                case 13:
                     if (_shotTimer < 6.5f) return;
 
                     Debug.Log("SELFTEST done");
@@ -967,6 +998,271 @@ namespace BrainshEditor
         {
             var data = new PointerEventData(EventSystem.current) { scrollDelta = new Vector2(x, y) };
             ExecuteEvents.Execute(_editor.viewport.gameObject, data, ExecuteEvents.scrollHandler);
+        }
+
+        // ---------------------------------------------------------------- touch stand
+
+        /// <summary>
+        /// Reproduces the gestures a finger makes on the phone: a quick flick, a slow drag
+        /// with a pause before it, and a drag of the scroll bar handle. Every step reports
+        /// what the editor did with it and takes a screenshot, because the report alone
+        /// does not show what the user sees.
+        /// </summary>
+        private void RunTouchTest()
+        {
+            _shotTimer += Time.unscaledDeltaTime;
+
+            // One gesture at a time: two fingers in one press would fight over the same
+            // state and the report would mean nothing.
+            if (!_gestureDone && _gestureStarted) return;
+
+            switch (_touchStep)
+            {
+                case 0:
+                    if (_shotTimer < 0.6f) return;
+
+                    // Phone layout: keyboard and output take their places, the text is long.
+                    _keyboardVisible = true;
+                    _consoleVisible = true;
+                    Relayout();
+
+                    // Текст меняется только в памяти: отладочный запуск ничего не пишет.
+                    _editor.SetText(LongScript());
+                    _touchShot = 0;
+                    Shoot("TOUCH 1: начало " + _editor.DescribeScrolling());
+                    _touchStep = 1;
+                    return;
+
+                case 1:
+                    Gesture(GesturePoint(0f), GesturePoint(1f), 0.4f, 0f, "быстрый flick вверх");
+                    _touchStep = 2;
+                    return;
+
+                case 2:
+                    Check("flick вверх", 220f, 60f);
+                    _touchStep = 3;
+                    return;
+
+                case 3:
+                    // The same, but the finger rests on the screen first: this is what
+                    // happens when a scroll starts a moment late.
+                    Gesture(GesturePoint(0f), GesturePoint(1f), 0.5f, 0.45f, "протяжка вверх с паузой");
+                    _touchStep = 4;
+                    return;
+
+                case 4:
+                    Check("протяжка вверх с паузой", 440f, 60f);
+                    _touchStep = 5;
+                    return;
+
+                case 5:
+                    Gesture(GesturePoint(1f), GesturePoint(0f), 0.5f, 0f, "протяжка вниз");
+                    _touchStep = 6;
+                    return;
+
+                case 6:
+                    Check("протяжка вниз", 220f, 60f);
+                    _touchStep = 7;
+                    return;
+
+                case 7:
+                    HandleDrag("перетаскивание ползунка");
+                    _touchStep = 8;
+                    return;
+
+                case 8:
+                    Check("перетаскивание ползунка", 1886f, 30f);
+                    _touchStep = 9;
+                    return;
+
+                case 9:
+                    if (_shotTimer < 1.2f) return;
+
+                    // Большое поле кода и щелчок по центру при прокрутке: попадание
+                    // каретки проверяется на глаз по снимку и по номеру строки.
+                    _keyboardVisible = false;
+                    _consoleVisible = false;
+                    Relayout();
+
+                    Wheel(0f, -2f);
+                    _touchStep = 10;
+                    return;
+
+                case 10:
+                    if (_shotTimer < 2.2f) return;
+
+                    Vector2 middle = (Vector2)_editor.viewport.position +
+                                     new Vector2(_editor.viewport.rect.width * 0.5f,
+                                                 _editor.viewport.rect.height * 0.5f);
+
+                    ClickAt(_editor.viewport.gameObject, middle);
+
+                    Debug.Log("TOUCH: клик в центре поля при прокрутке " + _scrollBefore.ToString("0") +
+                              " -> строка " + (_editor.Buffer.LineOf(_editor.Caret) + 1) +
+                              ", каретка " + _editor.Caret + ", " + _editor.DescribeHit(middle));
+
+                    _scrollBefore = _editor.ScrollY;
+                    _touchStep = 11;
+                    return;
+
+                case 11:
+                    if (_shotTimer < 2.6f) return;
+
+                    Debug.Log("TOUCH: после клика прокрутка = " + _editor.ScrollY.ToString("0") +
+                              " (была " + _scrollBefore.ToString("0") + ")");
+                    Shoot("TOUCH 6: каретка после клика при прокрутке " + _editor.DescribeScrolling());
+                    _touchStep = 12;
+                    return;
+
+                case 12:
+                    if (_shotTimer < 4.5f) return;
+
+                    Debug.Log("TOUCH: текст в редакторе не изменился = " +
+                              (_editor.Text == LongScript() ? "OK" : "MISMATCH") +
+                              ", выделено символов = " + _editor.SelectedText().Length);
+                    _touchStep = 13;
+                    return;
+
+                case 13:
+                    if (_shotTimer < 6.5f) return;
+
+                    Debug.Log("TOUCH done");
+                    Application.Quit();
+                    return;
+            }
+        }
+
+        /// <summary>Compares the scroll after a gesture with what it has to be.</summary>
+        private void Check(string what, float expected, float tolerance)
+        {
+            Shoot("TOUCH: " + what + " прокрутка " + _editor.ScrollY.ToString("0") +
+                  ", ждали " + expected.ToString("0") + " " +
+                  (Mathf.Abs(_editor.ScrollY - expected) <= tolerance ? "OK" : "MISMATCH") +
+                  ", выделено = " + _editor.SelectedText().Length + ", " + _editor.DescribeScrolling());
+        }
+
+        /// <summary>Starts the next finger gesture, unless one is already running.</summary>
+        private void Gesture(Vector2 from, Vector2 to, float seconds, float hold, string what)
+        {
+            _scrollBefore = _editor.ScrollY;
+            _gestureStarted = true;
+            _gestureDone = false;
+            StartCoroutine(Finger(from, to, seconds, hold, what));
+        }
+
+        /// <summary>A point in the code area: 0 is the middle row, 1 is 220 pixels up.</summary>
+        private Vector2 GesturePoint(float t)
+        {
+            Rect area = _editor.viewport.rect;
+
+            var centre = (Vector2)_editor.viewport.position +
+                         new Vector2(area.width * 0.5f, area.height * 0.5f);
+
+            return centre + new Vector2(0f, t * 220f * _canvas.scaleFactor);
+        }
+
+        /// <summary>A finger: press, optional pause, a drag in steps, release.</summary>
+        private IEnumerator Finger(Vector2 from, Vector2 to, float seconds, float hold, string what)
+        {
+            var data = new PointerEventData(EventSystem.current)
+            {
+                button = PointerEventData.InputButton.Left,
+                position = from
+            };
+
+            ExecuteEvents.Execute(_editor.viewport.gameObject, data, ExecuteEvents.pointerDownHandler);
+            Debug.Log("FINGER " + what + ": нажали, жест = " + _editor.Gesture);
+
+            if (hold > 0f) yield return new WaitForSecondsRealtime(hold);
+
+            const int steps = 20;
+
+            Vector2 previous = from;
+
+            for (int i = 1; i <= steps; i++)
+            {
+                data.position = Vector2.Lerp(from, to, i / (float)steps);
+                ExecuteEvents.Execute(_editor.viewport.gameObject, data, ExecuteEvents.dragHandler);
+
+                if (i == steps)
+                    Debug.Log("FINGER " + what + ": конец протяжки на экране +" +
+                              (data.position.y - previous.y).ToString("0") + " px, жест = " +
+                              _editor.Gesture + ", прокрутка = " + _editor.ScrollY.ToString("0"));
+
+                yield return null;
+            }
+
+            ExecuteEvents.Execute(_editor.viewport.gameObject, data, ExecuteEvents.pointerUpHandler);
+            Debug.Log("FINGER " + what + ": отпустили, жест = " + _editor.Gesture +
+                      ", прокрутка = " + _editor.ScrollY.ToString("0") +
+                      ", выделено = " + _editor.SelectedText().Length);
+
+            _gestureDone = true;
+        }
+
+        /// <summary>Drags the scroll bar handle from where it is to the bottom of the track.</summary>
+        private void HandleDrag(string what)
+        {
+            _gestureStarted = true;
+            _gestureDone = false;
+            StartCoroutine(DragHandle(what));
+        }
+
+        private IEnumerator DragHandle(string what)
+        {
+            var handle = _editor.scrollbarHandle;
+            if (handle == null)
+            {
+                Debug.Log("FINGER " + what + ": ползунка нет");
+                yield break;
+            }
+
+            var data = new PointerEventData(EventSystem.current)
+            {
+                button = PointerEventData.InputButton.Left
+            };
+
+            data.position = RectTransformUtility.WorldToScreenPoint(null, handle.position);
+            ExecuteEvents.Execute(handle.gameObject, data, ExecuteEvents.pointerDownHandler);
+            Debug.Log("FINGER " + what + ": взяли ползунок");
+
+            var track = handle.parent as RectTransform;
+            Vector2 bottom = RectTransformUtility.WorldToScreenPoint(null,
+                track.TransformPoint(new Vector3(0f, -track.rect.height * 0.5f + 10f, 0f)));
+
+            for (int i = 1; i <= 20; i++)
+            {
+                data.position = Vector2.Lerp(data.position, bottom, i / 20f);
+                ExecuteEvents.Execute(handle.gameObject, data, ExecuteEvents.dragHandler);
+                yield return null;
+            }
+
+            ExecuteEvents.Execute(handle.gameObject, data, ExecuteEvents.pointerUpHandler);
+            Debug.Log("FINGER " + what + ": отпустили, прокрутка = " + _editor.ScrollY.ToString("0"));
+
+            _gestureDone = true;
+        }
+
+        /// <summary>Long enough text to have to scroll, without touching the files on disk.</summary>
+        private static string LongScript()
+        {
+            var script = new StringBuilder();
+
+            for (int i = 0; i < 70; i++)
+            {
+                if (i > 0) script.Append('\n');
+                script.Append(":72. ").Append(i).Append(". { строка ").Append(i).Append(" }");
+            }
+
+            return script.ToString();
+        }
+
+        private void Shoot(string message)
+        {
+            string path = "/tmp/opencode/touch" + _touchShot + ".png";
+            _touchShot++;
+            Debug.Log(message + " -> " + path);
+            ScreenCapture.CaptureScreenshot(path);
         }
 
         /// <summary>Presses a control at a screen position, like a real pointer.</summary>
