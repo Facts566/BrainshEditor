@@ -16,9 +16,11 @@ namespace BrainshEditor
     [AddComponentMenu("")]
     public class AppController : MonoBehaviour
     {
-        private const float ToolbarHeight = 64f;
+        private const float ToolbarPadding = 6f;
+        private const float ToolbarGap = 4f;
         private const float StatusHeight = 30f;
-        private const float ConsoleHeight = 170f;
+        private const float ConsoleHeaderHeight = 52f;
+        private const float ConsoleInputHeight = 30f;
         private const float GutterWidth = 52f;
         private const float ScrollbarWidth = 10f;
         private const int EditorFontSize = 25;
@@ -26,6 +28,7 @@ namespace BrainshEditor
         private const float paddingY = 8f;
 
         private readonly List<MenuEntry> _menu = new List<MenuEntry>();
+        private readonly List<Button> _toolbarButtons = new List<Button>();
 
         private Canvas _canvas;
         private ScriptStore _store;
@@ -45,11 +48,21 @@ namespace BrainshEditor
         private Text _fileText;
         private Button _runButton;
         private Button _stopButton;
+        private Button _showKeyboardButton;
+        private Button _consoleKeyboardButton;
         private RectTransform _overlay;
+        private GameObject _promptRoot;
+        private InputField _promptInput;
+
+        private float _toolbarHeight = 52f;
+        private float _layoutWidth;
+
+        /// <summary>Set once, read on every start: the size the user picked.</summary>
+        private const string FontSizeKey = "brainsh.fontSize";
 
         // On a desktop the real keyboard is used, the on screen one only gets in the way.
         private bool _keyboardVisible = Application.isMobilePlatform;
-        private bool _consoleVisible = true;
+        private bool _consoleVisible;
         private string _currentFile;
         private float _messageTimer;
 
@@ -168,13 +181,18 @@ namespace BrainshEditor
         private void BuildToolbar()
         {
             RectTransform bar = Ui.Node("toolbar", _safeArea);
-            Ui.AtTop(bar, ToolbarHeight);
+            Ui.AtTop(bar, _toolbarHeight);
             _toolbar = bar;
 
             Ui.Box("bar background", bar, Ui.Panel);
 
-            HorizontalLayoutGroup row = Ui.Row(bar, 6f, new RectOffset(8, 8, 7, 7));
-            row.childForceExpandWidth = true;
+            HorizontalLayoutGroup row = Ui.Row(bar, ToolbarGap,
+                new RectOffset((int)ToolbarPadding, (int)ToolbarPadding,
+                    (int)ToolbarPadding, (int)ToolbarPadding));
+
+            // Ширину кнопок ставит Relayout по ширине экрана: все восемь - квадраты.
+            row.childForceExpandWidth = false;
+            row.childAlignment = TextAnchor.MiddleCenter;
 
             _runButton = ToolButton(row, "Run", Ui.Run, StartProgram);
             _stopButton = ToolButton(row, "Stop", Ui.Stop, StopProgram);
@@ -189,9 +207,11 @@ namespace BrainshEditor
 
         private Button ToolButton(HorizontalLayoutGroup row, string caption, Color color, Action action)
         {
-            Button button = Ui.Btn(caption, row.transform, caption, color, () => action(), 14, 2f);
+            Button button = Ui.Btn(caption, row.transform, caption, color, () => action(), 13, 2f);
             LayoutElement element = Ui.Size(button.gameObject, -1, 0f);
-            element.flexibleWidth = 1f;
+            element.flexibleWidth = 0f;
+
+            _toolbarButtons.Add(button);
             return button;
         }
 
@@ -298,8 +318,22 @@ namespace BrainshEditor
             _editor.scrollbarHandle = handle;
             _editor.lineNumbers = numbers;
 
+            // Клавиатуру можно убрать с экрана, но тогда нужна кнопка, чтобы вернуть её.
+            _showKeyboardButton = Ui.Btn("show keyboard", _editorArea, "Kbd", Ui.PanelLight,
+                ToggleKeyboard, 13, 4f);
+
+            RectTransform fab = (RectTransform)_showKeyboardButton.transform;
+            fab.anchorMin = new Vector2(1f, 0f);
+            fab.anchorMax = new Vector2(1f, 0f);
+            fab.pivot = new Vector2(1f, 0f);
+            fab.sizeDelta = new Vector2(52f, 52f);
+            fab.anchoredPosition = new Vector2(-(ScrollbarWidth + 10f), 10f);
+
             _editor.Changed += OnEditorChanged;
             _editor.CaretMoved += OnCaretMoved;
+
+            // Размер шрифта, выбранный в прошлый раз: он переживает перезапуск.
+            ApplyFontSize(Mathf.Clamp(PlayerPrefs.GetInt(FontSizeKey, EditorFontSize), 10, 40));
         }
 
         private void OnCaretMoved(int line, int column)
@@ -321,13 +355,44 @@ namespace BrainshEditor
                 _fileText.text = _currentFile + " *";
         }
 
+        /// <summary>
+        /// Program output lives on a page of its own: it covers the editor, and the cross
+        /// in its header stops the program and brings the code back.
+        /// </summary>
         private void BuildConsole()
         {
             _consolePanel = Ui.Node("console", _safeArea);
-            Ui.Box("console background", _consolePanel, Ui.Panel);
+            Ui.Stretch(_consolePanel);
+            Ui.Box("console background", _consolePanel, Ui.Background);
+
+            RectTransform header = Ui.Node("header", _consolePanel);
+            Ui.AtTop(header, ConsoleHeaderHeight);
+            Ui.Box("header background", header, Ui.Panel);
+
+            Text title = Ui.Label("title", header, "Output", 20, Ui.TextMain, TextAnchor.MiddleLeft);
+            Ui.Stretch(title.rectTransform, 14f, 0f, ConsoleHeaderHeight * 2f + 8f, 0f);
+
+            Button close = Ui.Btn("close output", header, "×", Ui.PanelLight, CloseConsole, 24, 0f);
+            RectTransform closeRect = (RectTransform)close.transform;
+            closeRect.anchorMin = new Vector2(1f, 1f);
+            closeRect.anchorMax = new Vector2(1f, 1f);
+            closeRect.pivot = new Vector2(1f, 1f);
+            closeRect.sizeDelta = new Vector2(ConsoleHeaderHeight - 8f, ConsoleHeaderHeight - 8f);
+            closeRect.anchoredPosition = new Vector2(-4f, -4f);
+
+            // Ввод для ',' живёт на этой странице: клавиатуру нужно вернуть отсюда же.
+            _consoleKeyboardButton = Ui.Btn("show keyboard output", header, "Kbd", Ui.PanelLight,
+                ToggleKeyboard, 13, 4f);
+
+            RectTransform kbdRect = (RectTransform)_consoleKeyboardButton.transform;
+            kbdRect.anchorMin = new Vector2(1f, 1f);
+            kbdRect.anchorMax = new Vector2(1f, 1f);
+            kbdRect.pivot = new Vector2(1f, 1f);
+            kbdRect.sizeDelta = new Vector2(ConsoleHeaderHeight - 8f, ConsoleHeaderHeight - 8f);
+            kbdRect.anchoredPosition = new Vector2(-(ConsoleHeaderHeight - 8f + 8f), -4f);
 
             RectTransform viewport = Ui.Node("viewport", _consolePanel);
-            Ui.Stretch(viewport, 8f, 26f, 8f, 6f);
+            Ui.Stretch(viewport, 10f, ConsoleInputHeight + 4f, 10f, ConsoleHeaderHeight + 2f);
             viewport.gameObject.AddComponent<RectMask2D>();
 
             RectTransform content = Ui.Node("content", viewport);
@@ -342,8 +407,13 @@ namespace BrainshEditor
 
             // The height is set by hand: a ContentSizeFitter is not re-evaluated
             // when only Text.text changes, and the output would stay invisible.
-            Text input = Ui.Label("input line", _consolePanel, string.Empty, 18, Ui.Accent, TextAnchor.LowerLeft);
-            Ui.Stretch(input.rectTransform, 8f, 4f, 8f, 0f);
+            Text input = Ui.Label("input line", _consolePanel, string.Empty, 18, Ui.Accent, TextAnchor.MiddleLeft);
+            RectTransform inputRect = input.rectTransform;
+            inputRect.anchorMin = new Vector2(0f, 0f);
+            inputRect.anchorMax = new Vector2(1f, 0f);
+            inputRect.pivot = new Vector2(0.5f, 0f);
+            inputRect.offsetMin = new Vector2(12f, 2f);
+            inputRect.offsetMax = new Vector2(-12f, ConsoleInputHeight);
 
             _console = _consolePanel.gameObject.AddComponent<ConsoleView>();
             _console.viewport = viewport;
@@ -372,7 +442,7 @@ namespace BrainshEditor
 
             _keyboard = _keyboardPanel.gameObject.AddComponent<SoftKeyboard>();
             _keyboard.Build(_keyboardPanel);
-            _keyboard.Resize();
+            _keyboard.Measure(Ui.ScreenInDp.x);
             _keyboard.KeyPressed += OnKeyPressed;
         }
 
@@ -380,20 +450,61 @@ namespace BrainshEditor
 
         private void Relayout()
         {
-            float keyboardHeight = _keyboardVisible ? SoftKeyboard.PreferredHeight : 0f;
-            float consoleHeight = _consoleVisible ? ConsoleHeight : 0f;
+            float width = _safeArea != null && _safeArea.rect.width > 100f
+                ? _safeArea.rect.width
+                : Ui.ScreenInDp.x;
 
-            _keyboardPanel.gameObject.SetActive(_keyboardVisible);
-            _consolePanel.gameObject.SetActive(_consoleVisible);
+            _layoutWidth = width;
+
+            // Восемь кнопок тулбара - квадраты: сторона растёт с шириной экрана,
+            // но на планшете упирается в предел и строка встаёт по центру.
+            float button = Mathf.Clamp(
+                Mathf.Floor((width - ToolbarPadding * 2f - ToolbarGap * (8 - 1)) / 8f), 32f, 56f);
+
+            _toolbarHeight = button + ToolbarPadding * 2f;
+            Ui.AtTop(_toolbar, _toolbarHeight);
+
+            for (int i = 0; i < _toolbarButtons.Count; i++)
+            {
+                var element = _toolbarButtons[i].GetComponent<LayoutElement>();
+                if (element != null) element.preferredWidth = button;
+            }
+
+            float keyboardHeight = 0f;
+            if (_keyboardVisible && _keyboard != null) keyboardHeight = _keyboard.Measure(width);
 
             SetBottom(_keyboardPanel, 0f, keyboardHeight);
-            SetBottom(_statusBar, keyboardHeight, keyboardHeight + StatusHeight);
-            SetBottom(_consolePanel, keyboardHeight + StatusHeight, keyboardHeight + StatusHeight + consoleHeight);
+            _keyboardPanel.gameObject.SetActive(_keyboardVisible);
 
-            _editorArea.offsetMin = new Vector2(0f, keyboardHeight + StatusHeight + consoleHeight);
-            _editorArea.offsetMax = new Vector2(0f, -ToolbarHeight);
+            float bottom = keyboardHeight + StatusHeight;
+            SetBottom(_statusBar, keyboardHeight, bottom);
 
-            if (_keyboardVisible) _keyboard.Resize();
+            // Вывод открывается как отдельная страница: пока она открыта, редактор скрыт.
+            _editorArea.gameObject.SetActive(!_consoleVisible);
+            _consolePanel.gameObject.SetActive(_consoleVisible);
+
+            _editorArea.offsetMin = new Vector2(0f, bottom);
+            _editorArea.offsetMax = new Vector2(0f, -_toolbarHeight);
+
+            _consolePanel.offsetMin = new Vector2(0f, bottom);
+            _consolePanel.offsetMax = new Vector2(0f, -_toolbarHeight);
+
+            if (_showKeyboardButton != null)
+                _showKeyboardButton.gameObject.SetActive(!_keyboardVisible);
+
+            if (_consoleKeyboardButton != null)
+                _consoleKeyboardButton.gameObject.SetActive(!_keyboardVisible);
+
+            // Страница получила настоящий размер: текст переносится по-новому, и
+            // область прокрутки нужно подогнать. Так же и редактор после возврата.
+            if (_consoleVisible)
+            {
+                if (_console != null) _console.Refresh();
+            }
+            else if (_editor != null)
+            {
+                _editor.Refresh();
+            }
         }
 
         private static void SetBottom(RectTransform rect, float bottom, float top)
@@ -409,16 +520,10 @@ namespace BrainshEditor
 
         public void LoadFile(string name)
         {
-            string text = _store.Read(name);
-
-            if (string.IsNullOrEmpty(text))
-            {
-                text = _store.Read("hello.bsh");
-                name = "hello.bsh";
-            }
+            if (string.IsNullOrEmpty(name)) name = _store.NextName();
 
             _currentFile = name;
-            _editor.SetText(text);
+            _editor.SetText(_store.Read(name));
             _fileText.text = name;
         }
 
@@ -448,8 +553,10 @@ namespace BrainshEditor
 
             foreach (string name in _store.List())
             {
-                string file = name;
-                _menu.Add(new MenuEntry { Caption = (file == _currentFile ? "> " : "   ") + file + ScriptStore.Extension,
+                // List() отдаёт имена без расширения, а текущий файл хранится с ним.
+                string file = name + ScriptStore.Extension;
+
+                _menu.Add(new MenuEntry { Caption = (file == _currentFile ? "> " : "   ") + file,
                     Action = () =>
                     {
                         Save();
@@ -460,16 +567,10 @@ namespace BrainshEditor
 
             _menu.Add(new MenuEntry { Caption = "-", Action = () => { } });
 
-            string fresh = _store.NextName();
             _menu.Add(new MenuEntry
             {
-                Caption = "New file: " + fresh,
-                Action = () =>
-                {
-                    _store.Write(fresh, _editor.Text);
-                    LoadFile(fresh);
-                    CloseMenu();
-                }
+                Caption = "New file… (type a name)",
+                Action = ShowNewFilePrompt
             });
 
             if (!string.IsNullOrEmpty(_currentFile))
@@ -489,6 +590,155 @@ namespace BrainshEditor
             }
 
             ShowMenu("Scripts", _menu);
+        }
+
+        /// <summary>
+        /// Asks for a file name. The editor has a keyboard of its own for Brainsh, but a
+        /// name is ordinary text, so a real InputField is used: on Android it raises the
+        /// phone keyboard, on a desktop the hardware one types into it.
+        /// </summary>
+        private void ShowNewFilePrompt()
+        {
+            CloseMenu();
+            ClosePrompt();
+
+            Image dim = Ui.Box("prompt dim", _safeArea, new Color(0f, 0f, 0f, 0.72f));
+            Ui.Stretch(dim.rectTransform);
+            dim.raycastTarget = true;
+            _promptRoot = dim.gameObject;
+
+            float safeWidth = _safeArea.rect.width > 100f ? _safeArea.rect.width : Ui.ScreenInDp.x;
+            float cardWidth = Mathf.Min(440f, safeWidth - 32f);
+
+            RectTransform card = Ui.Node("card", dim.transform);
+            card.anchorMin = new Vector2(0.5f, 0.5f);
+            card.anchorMax = new Vector2(0.5f, 0.5f);
+            card.pivot = new Vector2(0.5f, 0.5f);
+            card.sizeDelta = new Vector2(cardWidth, 250f);
+            card.anchoredPosition = Vector2.zero;
+
+            Ui.Box("card background", card, Ui.PanelLight);
+
+            Text title = Ui.Label("title", card, "File name", 20, Ui.TextMain, TextAnchor.MiddleLeft);
+            RectTransform titleRect = title.rectTransform;
+            titleRect.anchorMin = new Vector2(0f, 1f);
+            titleRect.anchorMax = new Vector2(1f, 1f);
+            titleRect.pivot = new Vector2(0.5f, 1f);
+            titleRect.offsetMin = new Vector2(16f, -48f);
+            titleRect.offsetMax = new Vector2(-16f, -8f);
+
+            RectTransform field = Ui.Node("field", card);
+            field.anchorMin = new Vector2(0f, 1f);
+            field.anchorMax = new Vector2(1f, 1f);
+            field.pivot = new Vector2(0.5f, 1f);
+            field.offsetMin = new Vector2(16f, -110f);
+            field.offsetMax = new Vector2(-16f, -56f);
+
+            var background = field.gameObject.AddComponent<Image>();
+            background.color = Ui.Background;
+            background.raycastTarget = true;
+
+            Text value = FieldText("text", field, Ui.TextMain, string.Empty);
+            Text placeholder = FieldText("placeholder", field, Ui.TextDim, "my_program");
+
+            _promptInput = field.gameObject.AddComponent<InputField>();
+            _promptInput.textComponent = value;
+            _promptInput.placeholder = placeholder;
+            _promptInput.lineType = InputField.LineType.SingleLine;
+            _promptInput.characterLimit = 32;
+            _promptInput.caretColor = Ui.Accent;
+            _promptInput.customCaretColor = true;
+            _promptInput.selectionColor = Ui.Selection;
+            _promptInput.text = string.Empty;
+            _promptInput.onEndEdit.AddListener(OnPromptEndEdit);
+
+            Text hint = Ui.Label("hint", card, "letters, digits, _ and -", 14, Ui.TextDim,
+                TextAnchor.MiddleLeft);
+            RectTransform hintRect = hint.rectTransform;
+            hintRect.anchorMin = new Vector2(0f, 1f);
+            hintRect.anchorMax = new Vector2(1f, 1f);
+            hintRect.pivot = new Vector2(0.5f, 1f);
+            hintRect.offsetMin = new Vector2(16f, -134f);
+            hintRect.offsetMax = new Vector2(-16f, -112f);
+
+            RectTransform buttons = Ui.Node("buttons", card);
+            buttons.anchorMin = new Vector2(0f, 0f);
+            buttons.anchorMax = new Vector2(1f, 0f);
+            buttons.pivot = new Vector2(0.5f, 0f);
+            buttons.offsetMin = new Vector2(16f, 16f);
+            buttons.offsetMax = new Vector2(-16f, 64f);
+
+            HorizontalLayoutGroup row = Ui.Row(buttons, 10f);
+            row.childForceExpandWidth = true;
+
+            Button cancel = Ui.Btn("cancel", buttons, "Cancel", Ui.Panel, ClosePrompt, 16);
+            Ui.Size(cancel.gameObject, -1, 48f).flexibleWidth = 1f;
+
+            Button create = Ui.Btn("create", buttons, "Create", Ui.Run, AcceptNewFile, 16);
+            Ui.Size(create.gameObject, -1, 48f).flexibleWidth = 1f;
+
+            _promptInput.Select();
+            _promptInput.ActivateInputField();
+        }
+
+        private static Text FieldText(string name, RectTransform field, Color color, string value)
+        {
+            Text text = Ui.Label(name, field, value, 20, color, TextAnchor.MiddleLeft);
+            Ui.Stretch(text.rectTransform, 12f, 0f, 12f, 0f);
+            text.raycastTarget = false;
+            return text;
+        }
+
+        private void AcceptNewFile()
+        {
+            string typed = _promptInput != null ? _promptInput.text : string.Empty;
+            string name = ScriptStore.Sanitize(typed);
+
+            if (name.EndsWith(ScriptStore.Extension, StringComparison.OrdinalIgnoreCase))
+                name = name.Substring(0, name.Length - ScriptStore.Extension.Length);
+
+            if (string.IsNullOrEmpty(name))
+            {
+                SetStatus("file name cannot be empty", Ui.Error, 3f);
+                return;
+            }
+
+            ClosePrompt();
+
+            // Текущую работу не теряем: она уходит в свой файл перед переключением.
+            Save();
+
+            string file = name + ScriptStore.Extension;
+            bool existing = _store.Exists(file);
+
+            if (!existing) _store.Write(file, string.Empty);
+
+            LoadFile(file);
+            SetStatus((existing ? "opened " : "created ") + file, Ui.Good, 3f);
+        }
+
+        /// <summary>Enter on a hardware keyboard creates the file; the buttons still work.</summary>
+        private void OnPromptEndEdit(string value)
+        {
+            if (_promptInput == null) return;
+            if (!Input.GetKeyDown(KeyCode.Return) && !Input.GetKeyDown(KeyCode.KeypadEnter)) return;
+
+            AcceptNewFile();
+        }
+
+        private void ClosePrompt()
+        {
+            if (_promptInput != null)
+            {
+                _promptInput.DeactivateInputField();
+                _promptInput = null;
+            }
+
+            if (_promptRoot != null)
+            {
+                Destroy(_promptRoot);
+                _promptRoot = null;
+            }
         }
 
         private void ShowMainMenu()
@@ -583,15 +833,33 @@ namespace BrainshEditor
                     Caption = value + (value == _editor.fontSize ? "  *" : ""),
                     Action = () =>
                     {
-                        _editor.fontSize = value;
-                        _editor.code.fontSize = value;
-                        _editor.Refresh();
+                        ApplyFontSize(value);
+                        PlayerPrefs.SetInt(FontSizeKey, value);
+                        PlayerPrefs.Save();
                         ShowMainMenu();
                     }
                 });
             }
 
             ShowMenu("Font size", _menu);
+        }
+
+        /// <summary>One place that changes the text size: code, line numbers and layout.</summary>
+        private void ApplyFontSize(int size)
+        {
+            size = Mathf.Clamp(size, 10, 40);
+
+            if (_editor == null) return;
+
+            _editor.fontSize = size;
+
+            if (_editor.code != null) _editor.code.fontSize = size;
+
+            // Номера строк стоят рядом с кодом, кегль обязан совпадать, иначе
+            // после смены размера номера съезжают относительно строк.
+            if (_editor.lineNumbers != null) _editor.lineNumbers.fontSize = size;
+
+            _editor.Refresh();
         }
 
         private Camera CanvasCamera()
@@ -717,8 +985,12 @@ namespace BrainshEditor
 
         private void LateUpdate()
         {
-            // The keyboard fits its keys to the panel, once the layout of the frame is known.
-            if (_keyboard != null) _keyboard.Resize();
+            // The first layout pass gives the real width. When it changes (rotation,
+            // a different window, a safe area on a phone) the squares are measured again.
+            if (_safeArea == null) return;
+
+            float width = _safeArea.rect.width;
+            if (width > 100f && Mathf.Abs(width - _layoutWidth) > 0.5f) Relayout();
         }
 
         private void Update()
@@ -726,7 +998,17 @@ namespace BrainshEditor
             if (_runner != null && _runner.IsRunning && _io != null)
             {
                 bool waiting = _io.WaitingForInput;
-                if (waiting != _console.AwaitingInput) _console.SetAwaitingInput(waiting);
+                if (waiting != _console.AwaitingInput)
+                {
+                    _console.SetAwaitingInput(waiting);
+
+                    // ',' ждёт строку: на телефоне без экранной клавиатуры её не набрать.
+                    if (waiting && !_keyboardVisible && Application.isMobilePlatform)
+                    {
+                        _keyboardVisible = true;
+                        Relayout();
+                    }
+                }
             }
 
             if (_messageTimer > 0f)
@@ -906,6 +1188,10 @@ namespace BrainshEditor
                 {
                     if (_shotTimer < 4.8f) return;
 
+                    // Страница вывода закрывается, редактор снова на экране: кликать
+                    // по скрытому полю бессмысленно.
+                    if (_consoleVisible) ToggleConsole();
+
                     // Попадание указателя: кликаем по пятому символу пятой строки.
                     int line = 4;
                     int column = 4;
@@ -986,7 +1272,90 @@ namespace BrainshEditor
                 }
 
                 case 13:
+                    if (_shotTimer < 6.2f) return;
+
+                    // Регистр: Shift поднимает одну букву, а следующая снова строчная.
+                    _textBefore = _editor.Caret;
+                    ClickControl("page2");
+                    _testStep = 14;
+                    return;
+
+                case 14:
                     if (_shotTimer < 6.5f) return;
+
+                    ClickControl("Shift");
+                    ClickControl("key0");
+                    _testStep = 15;
+                    return;
+
+                case 15:
+                    if (_shotTimer < 6.8f) return;
+
+                    ClickControl("key1");
+                    _testStep = 16;
+                    return;
+
+                case 16:
+                {
+                    if (_shotTimer < 7.2f) return;
+
+                    string text = _editor.Text;
+                    string got = _textBefore >= 0 && _textBefore + 2 <= text.Length
+                        ? text.Substring(_textBefore, 2)
+                        : string.Empty;
+
+                    Debug.Log("SELFTEST 10: Shift, затем q и w -> '" + got +
+                              "' (ждали 'Qw') " + (got == "Qw" ? "OK" : "MISMATCH"));
+                    _testStep = 17;
+                    return;
+                }
+
+                case 17:
+                    if (_shotTimer < 7.5f) return;
+
+                    // Страница вывода и её крестик: открыть, закрыть, проверить состояние.
+                    ToggleConsole();
+                    _testStep = 18;
+                    return;
+
+                case 18:
+                    if (_shotTimer < 7.9f) return;
+
+                    Debug.Log("SELFTEST 11: output page opened=" + _consoleVisible +
+                              " editor active=" + _editorArea.gameObject.activeSelf);
+                    ClickControl("close output");
+                    _testStep = 19;
+                    return;
+
+                case 19:
+                    if (_shotTimer < 8.3f) return;
+
+                    Debug.Log("SELFTEST 12: cross closed the page=" + !_consoleVisible +
+                              " editor back=" + _editorArea.gameObject.activeSelf +
+                              (_consoleVisible ? " MISMATCH" : " OK"));
+
+                    // Диалог имени файла: поле ввода должно собраться и получить фокус.
+                    ShowNewFilePrompt();
+                    _testStep = 20;
+                    return;
+
+                case 20:
+                {
+                    if (_shotTimer < 8.7f) return;
+
+                    bool open = _promptRoot != null && _promptInput != null;
+                    bool focused = _promptInput != null && _promptInput.isFocused;
+
+                    Debug.Log("SELFTEST 13: name dialog open=" + open + " field focused=" +
+                              focused + (open && focused ? " OK" : " MISMATCH"));
+
+                    ClosePrompt();
+                    _testStep = 21;
+                    return;
+                }
+
+                case 21:
+                    if (_shotTimer < 9.1f) return;
 
                     Debug.Log("SELFTEST done");
                     Application.Quit();
@@ -1021,9 +1390,10 @@ namespace BrainshEditor
                 case 0:
                     if (_shotTimer < 0.6f) return;
 
-                    // Phone layout: keyboard and output take their places, the text is long.
+                    // Phone layout: keyboard takes its place, the text is long. The output
+                    // is a separate page now, so it stays closed for the gestures.
                     _keyboardVisible = true;
-                    _consoleVisible = true;
+                    _consoleVisible = false;
                     Relayout();
 
                     // Текст меняется только в памяти: отладочный запуск ничего не пишет.
@@ -1071,7 +1441,9 @@ namespace BrainshEditor
                     return;
 
                 case 8:
-                    Check("перетаскивание ползунка", 1886f, 30f);
+                    // Ползунок вниз до упора: предел зависит от высоты поля, поэтому
+                    // ожидание берётся у редактора, а не из константы.
+                    Check("перетаскивание ползунка", _editor.MaxScrollY(), 30f);
                     _touchStep = 9;
                     return;
 
@@ -1400,6 +1772,9 @@ namespace BrainshEditor
         /// <summary>Hardware keyboard for desktop testing: typing, editing, shortcuts.</summary>
         private void HandleKeyboard()
         {
+            // Имя файла набирается в поле ввода: эти символы не должны попасть ещё и в код.
+            if (_promptInput != null && _promptInput.isFocused) return;
+
             bool control = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ||
                            Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand);
 
@@ -1454,9 +1829,21 @@ namespace BrainshEditor
 
         private void HandleBack()
         {
+            if (_promptRoot != null)
+            {
+                ClosePrompt();
+                return;
+            }
+
             if (_overlay != null)
             {
                 CloseMenu();
+                return;
+            }
+
+            if (_consoleVisible)
+            {
+                CloseConsole();
                 return;
             }
 
@@ -1498,6 +1885,10 @@ namespace BrainshEditor
 
             _runner.StartProgram(program, _io);
 
+            // Вывод — отдельная страница: запуск сразу показывает её.
+            _consoleVisible = true;
+            Relayout();
+
             SetStatus("running", Ui.Accent, 2f);
         }
 
@@ -1531,6 +1922,9 @@ namespace BrainshEditor
 
         private void ShowError(BrainshException e)
         {
+            _consoleVisible = true;
+            Relayout();
+
             _console.Clear();
             _console.Append(e.FullMessage + "\n");
             SetStatus(e.Message, Ui.Error);
@@ -1558,6 +1952,15 @@ namespace BrainshEditor
         private void ToggleConsole()
         {
             _consoleVisible = !_consoleVisible;
+            Relayout();
+        }
+
+        /// <summary>The cross on the output page: stop the program and go back to the code.</summary>
+        private void CloseConsole()
+        {
+            if (_runner != null && _runner.IsRunning) StopProgram();
+
+            _consoleVisible = false;
             Relayout();
         }
 

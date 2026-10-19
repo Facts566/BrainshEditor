@@ -574,7 +574,8 @@ namespace BrainshEditor
             _scrollY = Mathf.Clamp(_scrollY, 0f, maxY);
         }
 
-        private float MaxScrollY()
+        /// <summary>How far the text can be scrolled down. Depends on the size of the field.</summary>
+        public float MaxScrollY()
         {
             if (_layout == null) return 0f;
 

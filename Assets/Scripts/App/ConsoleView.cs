@@ -70,6 +70,16 @@ namespace BrainshEditor
             ScrollToBottom();
         }
 
+        /// <summary>
+        /// Called when the page gets its real size: the wrapped height of the text
+        /// depends on the width, so the scroll area is fitted again.
+        /// </summary>
+        public void Refresh()
+        {
+            FitToContent();
+            ScrollToBottom();
+        }
+
         public void SetAwaitingInput(bool value)
         {
             _awaitingInput = value;
