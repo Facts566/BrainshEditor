@@ -20,7 +20,7 @@ namespace BrainshEditor
         private readonly int _size;
         private readonly FontStyle _style;
         private readonly TextGenerator _generator = new TextGenerator();
-        private readonly TextGenerationSettings _settings;
+        private TextGenerationSettings _settings;
 
         private string _text = string.Empty;
         private int[] _lineStart = { 0 };
@@ -31,6 +31,7 @@ namespace BrainshEditor
         private float _lineHeight = 16f;
         private float _fallbackAdvance = 10f;
         private bool _lineHeightMeasured;
+        private float _scaleFactor = 1f;
 
         public CodeLayout(Font font, int size, FontStyle style = FontStyle.Normal)
         {
@@ -74,6 +75,32 @@ namespace BrainshEditor
         }
 
         public float Width { get; private set; }
+
+        /// <summary>True when the positions come from the text generator, not from the font.</summary>
+        public bool MeasuredFromGenerator { get; private set; }
+
+        /// <summary>Characters the generator reported, and characters in the text.</summary>
+        public int GeneratedCharacters { get; private set; }
+        public int TextCharacters { get; private set; }
+
+        /// <summary>
+        /// Pixel density the Text component generates its glyphs at. The component asks the
+        /// font for characters at fontSize * canvas.scaleFactor, so the same size has to be
+        /// used here: glyph advances are rounded to whole pixels, and a different scale
+        /// gives a different rounding. Half a unit of error per character quietly turns
+        /// into a whole character of caret drift at the end of a long line.
+        /// </summary>
+        public float ScaleFactor
+        {
+            get { return _scaleFactor; }
+            set { _scaleFactor = value > 0.01f ? value : 1f; }
+        }
+
+        /// <summary>Font size in pixels the generator really works with.</summary>
+        private int PixelSize
+        {
+            get { return Mathf.Max(1, Mathf.RoundToInt(_size * _scaleFactor)); }
+        }
 
         public float Height
         {
@@ -204,6 +231,12 @@ namespace BrainshEditor
         /// <summary>
         /// Fills the character positions from the text generator: it reports the pen
         /// position of every character, which is exactly where the Text component puts it.
+        ///
+        /// The generator works in canvas pixels - the font is asked for at
+        /// fontSize * scaleFactor - and the Text component divides the result back before
+        /// drawing. The same conversion is done here. Measured at another scale the glyph
+        /// advances are rounded differently, the error accumulates along the line and the
+        /// caret ends up a whole character away from the text.
         /// </summary>
         private void Measure()
         {
@@ -215,13 +248,20 @@ namespace BrainshEditor
                 return;
             }
 
-            _font.RequestCharactersInTexture(_text, _size, _style);
+            int pixelSize = PixelSize;
+            _font.RequestCharactersInTexture(_text, pixelSize, _style);
+
+            _settings.scaleFactor = _scaleFactor;
             _generator.PopulateWithErrors(_text, _settings, null);
 
             UICharInfo[] characters = _generator.GetCharactersArray();
             UILineInfo[] lines = _generator.GetLinesArray();
 
             bool usable = characters != null && characters.Length >= _text.Length;
+
+            GeneratedCharacters = characters != null ? characters.Length : 0;
+            TextCharacters = _text.Length;
+            MeasuredFromGenerator = usable;
 
             _charX = new float[_text.Length + 1];
             _charAdvance = new float[_text.Length + 1];
@@ -233,15 +273,22 @@ namespace BrainshEditor
                 int start = _lineStart[line];
                 int end = _lineEnd[line];
 
-                float origin = usable ? characters[start].cursorPos.x : 0f;
+                float origin = usable && end > start ? characters[start].cursorPos.x : 0f;
                 float pen = 0f;
 
                 for (int i = start; i < end; i++)
                 {
                     if (usable)
                     {
-                        _charX[i] = characters[i].cursorPos.x - origin;
-                        _charAdvance[i] = PenAfter(characters, i) - characters[i].cursorPos.x;
+                        // The generator works in canvas pixels (fontSize * scaleFactor),
+                        // the Text component divides them back by pixelsPerUnit before
+                        // drawing. Positions are used in the same units as the text.
+                        _charX[i] = (characters[i].cursorPos.x - origin) / _scaleFactor;
+
+                        // One entry per character of the string, line breaks included, so
+                        // the neighbour is the real pen position, kerning included.
+                        _charAdvance[i] = (PenAfter(characters, i) - characters[i].cursorPos.x) /
+                                          _scaleFactor;
                         if (_charAdvance[i] <= 0f) _charAdvance[i] = FontAdvance(_text[i]);
                     }
                     else
@@ -265,10 +312,20 @@ namespace BrainshEditor
             Width = widest;
             _fallbackAdvance = FontAdvance(' ');
 
-            if (lines != null && lines.Length > 0 && lines[0].height > 0)
+            if (lines != null && lines.Length > 0)
             {
-                _lineHeight = lines[0].height;
-                _lineHeightMeasured = true;
+                // The row pitch is the distance between the tops of two lines, not the
+                // height of one: they differ by the leading, and a fraction of a unit per
+                // row adds up to a whole wrong line at the bottom of a long file.
+                // topY grows downwards from the top line, so the first line has the
+                // larger value.
+                float pitch = lines.Length > 1 ? lines[0].topY - lines[1].topY : lines[0].height;
+
+                if (pitch > 0f)
+                {
+                    _lineHeight = pitch / _scaleFactor;
+                    _lineHeightMeasured = true;
+                }
             }
         }
 
@@ -297,9 +354,11 @@ namespace BrainshEditor
 
         private float FontAdvance(char c)
         {
+            int pixelSize = PixelSize;
             CharacterInfo info;
-            if (_font.GetCharacterInfo(c, out info, _size, _style)) return info.advance;
-            if (_font.GetCharacterInfo('?', out info, _size, _style)) return info.advance;
+
+            if (_font.GetCharacterInfo(c, out info, pixelSize, _style)) return info.advance / _scaleFactor;
+            if (_font.GetCharacterInfo('?', out info, pixelSize, _style)) return info.advance / _scaleFactor;
 
             return _size * 0.5f;
         }

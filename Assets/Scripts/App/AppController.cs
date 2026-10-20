@@ -81,6 +81,7 @@ namespace BrainshEditor
         private bool _gestureDone;
         private float _scrollBefore;
         private int _textBefore;
+        private string _savedText;
         private int _caretLine = 1;
         private int _caretColumn = 1;
 
@@ -1356,6 +1357,27 @@ namespace BrainshEditor
 
                 case 21:
                     if (_shotTimer < 9.1f) return;
+
+                    // Длинная строка: любое расхождение метрик копится к её концу, и
+                    // каретка уезжает от текста на целый символ. Ширина макета должна
+                    // совпасть с шириной, которую рисует сам Text.
+                    _savedText = _editor.Text;
+                    _editor.SetText(">:32. { space } <:108 { ll } >:44. { , } " +
+                                    "WWWWW iiiii 0123456789 <:101. { e }");
+                    _testStep = 22;
+                    return;
+
+                case 22:
+                    if (_shotTimer < 9.5f) return;
+
+                    Debug.Log("SELFTEST 14: long line " + _editor.MeasureDrift());
+
+                    _editor.SetText(_savedText);
+                    _testStep = 23;
+                    return;
+
+                case 23:
+                    if (_shotTimer < 9.9f) return;
 
                     Debug.Log("SELFTEST done");
                     Application.Quit();

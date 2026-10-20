@@ -435,7 +435,10 @@ namespace BrainshEditor
 
             return "layoutWidth=" + mine.ToString("0.0") +
                    " textWidth=" + real.ToString("0.0") +
-                   " drift=" + (mine - real).ToString("0.0");
+                   " drift=" + (mine - real).ToString("0.0") +
+                   " scale=" + _layout.ScaleFactor.ToString("0.00") +
+                   " fromGenerator=" + _layout.MeasuredFromGenerator +
+                   " (" + _layout.GeneratedCharacters + "/" + _layout.TextCharacters + ")";
         }
 
         private void BeginSelection()
@@ -497,6 +500,7 @@ namespace BrainshEditor
         {
             Font font = code != null ? code.font : null;
             int size = code != null ? code.fontSize : fontSize;
+            float scale = CanvasScale();
 
             if (_layout == null || _layoutFont != font || _layoutSize != size)
             {
@@ -505,6 +509,7 @@ namespace BrainshEditor
                 _layoutSize = size;
             }
 
+            _layout.ScaleFactor = scale;
             _layout.Rebuild(_buffer.Text);
         }
 
@@ -516,7 +521,9 @@ namespace BrainshEditor
             TextGenerator generator = code.cachedTextGenerator;
             if (generator == null || generator.lineCount < 2 || generator.lines == null) return;
 
-            float pitch = generator.lines[1].topY - generator.lines[0].topY;
+            // The generator works in canvas pixels, the layout in the units of the text.
+            // topY grows downwards, the first line is the highest one.
+            float pitch = (generator.lines[0].topY - generator.lines[1].topY) / CanvasScale();
             if (pitch > 0f) _layout.SetLineHeight(pitch);
         }
 
