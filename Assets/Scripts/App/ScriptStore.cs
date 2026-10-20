@@ -102,6 +102,24 @@ namespace BrainshEditor
             }
         }
 
+        /// <summary>
+        /// Copies a script opened from the outside into the store and returns its name.
+        /// The same text already saved under that name is reused, so opening one file
+        /// twice does not fill the list with copies.
+        /// </summary>
+        public string Import(string name, string text)
+        {
+            text = Normalize(text);
+
+            string preferred = Sanitize(Path.GetFileNameWithoutExtension(name ?? string.Empty));
+            if (preferred.Length == 0) preferred = "opened";
+
+            if (Exists(preferred) && Read(preferred) == text) return preferred + Extension;
+
+            string target = NextName(preferred);
+            return Write(target, text) ? target : null;
+        }
+
         /// <summary>Name for a new script that does not exist yet.</summary>
         public string NextName(string preferred = "script")
         {

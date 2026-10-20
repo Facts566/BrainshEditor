@@ -65,6 +65,9 @@ namespace BrainshEditor
         private bool _consoleVisible;
         private string _currentFile;
         private float _messageTimer;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private float _intentTimer;
+#endif
 
         private string[] _shots;
         private int _shotIndex;
@@ -150,6 +153,12 @@ namespace BrainshEditor
 
             string start = _store.Exists("hello.bsh") ? "hello.bsh" : _store.NextName();
             LoadFile(start);
+
+            // A script opened from the file manager wins over the starting one.
+            OpenExternal(ExternalFile.FromArguments(Environment.GetCommandLineArgs()));
+#if UNITY_ANDROID && !UNITY_EDITOR
+            OpenExternal(ExternalFile.FromIntent());
+#endif
 
             Relayout();
         }
@@ -527,6 +536,47 @@ namespace BrainshEditor
             _editor.SetText(_store.Read(name));
             _fileText.text = name;
         }
+
+        /// <summary>
+        /// Opens a script handed over by the system: from the command line on a desktop,
+        /// from a file manager on Android. It is imported into the scripts folder first,
+        /// so saving later never overwrites the file the user picked.
+        /// </summary>
+        private void OpenExternal(ExternalFile file)
+        {
+            if (file == null) return;
+
+            // Debug runs type into the code: they must not touch the files on disk.
+            if (IsDebugRun) return;
+
+            string name = _store.Import(file.Name, file.Text);
+
+            if (string.IsNullOrEmpty(name))
+            {
+                SetStatus("cannot open " + file.Name, Ui.Error, 3f);
+                return;
+            }
+
+            LoadFile(name);
+
+            SetStatus("opened " + name, Ui.Good, 3f);
+            Debug.Log("Opened " + file.Source + " as " + name);
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        /// <summary>
+        /// A file manager can send a file while the app is already running. Unity's
+        /// activity is singleTask and keeps the newest intent, so polling it is enough.
+        /// </summary>
+        private void PollIntent()
+        {
+            _intentTimer -= Time.unscaledDeltaTime;
+            if (_intentTimer > 0f) return;
+
+            _intentTimer = 0.5f;
+            OpenExternal(ExternalFile.FromIntent());
+        }
+#endif
 
         public void Save(bool announce = false)
         {
@@ -1021,6 +1071,10 @@ namespace BrainshEditor
             HandleKeyboard();
 
             if (Input.GetKeyDown(KeyCode.Escape)) HandleBack();
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+            PollIntent();
+#endif
 
             RunSelfTest();
             RunDebugCapture();

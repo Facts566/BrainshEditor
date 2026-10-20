@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Overrides Unity's activity declaration (AndroidPlayer/Apk/UnityManifest.xml):
+  it keeps the launcher intent and the Unity meta-data and adds a filter, so a
+  .bsh file can be opened from a file manager ("Open with").
+
+  File managers do not know the .bsh extension, so the type they report is one of
+  the generic ones listed here. Brainsh only appears for these types, not for every
+  file on the device.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+  <application>
+    <activity android:name="com.unity3d.player.UnityPlayerActivity"
+              android:theme="@style/UnityThemeSelector">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <data android:scheme="content" android:mimeType="text/plain" />
+        <data android:scheme="content" android:mimeType="application/octet-stream" />
+        <data android:scheme="content" android:mimeType="application/x-brainsh" />
+      </intent-filter>
+      <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
+    </activity>
+  </application>
+</manifest>
